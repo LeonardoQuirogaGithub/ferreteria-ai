@@ -1,0 +1,47 @@
+# Entorno completo: PostgreSQL + backend + frontend (+ Ollama opcional).
+# Uso:   docker compose up -d --build
+#        docker compose --profile ia up -d   (incluye Ollama en contenedor)
+# Nota: no se pudo ejecutar en el equipo de desarrollo (Docker no instalado); ver docs/decisiones-pendientes.md.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ferreteria
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambiar-en-produccion}
+      POSTGRES_DB: ferreteria_ai
+    ports: ["5432:5432"]
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ferreteria -d ferreteria_ai"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://ferreteria:${POSTGRES_PASSWORD:-cambiar-en-produccion}@db:5432/ferreteria_ai
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET (32+ caracteres)}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      FRONTEND_URL: http://localhost:8080
+    ports: ["4000:4000"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+  frontend:
+    build: ./frontend
+    depends_on: [backend]
+    ports: ["8080:80"]
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ia"]
+    ports: ["11434:11434"]
+    volumes: [ollama-data:/root/.ollama]
+
+volumes:
+  db-data:
+  ollama-data:
